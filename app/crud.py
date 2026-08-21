@@ -3,13 +3,14 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .security import hash_password
 
 
-def create_issue(db: Session, issue: schemas.IssueCreate) -> models.Issue:
-    db_issue = models.Issue(**issue.model_dump())
+def create_issue(db: Session, issue: schemas.IssueCreate, reported_by_id: int) -> models.Issue:
+    db_issue = models.Issue(**issue.model_dump(), reported_by_id=reported_by_id)
     db.add(db_issue)
     db.commit()
-    db.refresh(db_issue)  # pulls back DB-generated fields: id, created_at, etc.
+    db.refresh(db_issue)
     return db_issue
 
 
@@ -34,8 +35,6 @@ def update_issue(
     if not db_issue:
         return None
 
-    # exclude_unset=True: only fields the client actually sent get applied —
-    # a field left out of the request body won't overwrite existing data with None.
     update_data = issue_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_issue, field, value)
@@ -52,3 +51,19 @@ def delete_issue(db: Session, issue_id: int) -> bool:
     db.delete(db_issue)
     db.commit()
     return True
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
+    return db.query(models.User).filter(models.User.email == email).first()
+
+
+def create_user(db: Session, user_in: schemas.UserCreate) -> models.User:
+    db_user = models.User(
+        email=user_in.email,
+        hashed_password=hash_password(user_in.password),
+        role=user_in.role,
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
